@@ -1,3 +1,4 @@
 const http = require('./lib/http');
+const function = require('./lib/function');
 
-module.exports = { http };
+module.exports = { http, function };
