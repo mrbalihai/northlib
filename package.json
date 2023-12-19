@@ -1,0 +1,19 @@
+{
+  "name": "webgl-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "http-server",
+    "build": "esbuild --bundle index.ts > index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "esbuild": "^0.19.9",
+    "http-server": "^14.1.1",
+    "typescript": "^5.3.3"
+  }
+}
