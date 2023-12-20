@@ -35,9 +35,7 @@ export const flatMap: FlatMap = (a, f) =>
   isNone(a) ? none : f(a.value);
 
 export const chain = <A>(...operations: ((input: A) => Option<A>)[]): ((input: A) => Option<A>) =>
-  (input: A) => {
-    return operations.reduce((acc: Option<A>, operation: (input: A) => Option<A>) => {
-      return flatMap(acc, operation);
-    }, some(input));
-  };
+  (input: A) =>
+    operations.reduce((acc: Option<A>, operation: (input: A) => Option<A>) =>
+      flatMap(acc, operation), some(input));
 

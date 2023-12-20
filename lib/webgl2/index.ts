@@ -1,24 +1,28 @@
 import { SideEffect } from "../fp";
-import { List, forEach } from "../fp/list";
+import { List, forEach, arrayToList } from "../fp/list";
 import { Option, none, some, chain, flatMap } from '../fp/option';
 
 export type GetWebGLContext = (canvas: Option<HTMLCanvasElement>) => Option<WebGL2RenderingContext>;
 
 // To facilitate syntax highlighting
-export const glsl = String.raw;
+export const glsl = (shader: TemplateStringsArray) => `#version 300 es\n${shader}`;
 
-export const getWebGLContext: GetWebGLContext = (canvas: Option<HTMLCanvasElement>) =>
-  flatMap(canvas, el => {
-    const ctx = el.getContext('webgl2');
-    return ctx ? some(ctx) : none;
-  });
+type UniformValue =
+  | number
+  | boolean
+  | number[]
+  | Float32Array;
 
-type UniformValue = number | boolean | number[] | Float32Array;
+type AttributeValue =
+  | number[]
+  | [number, number][]
+  | [number, number, number][]
+  | [number, number, number, number][];
 
 interface NodeProps {
   fragShader?: string,
   vertShader?: string,
-  attributes?: { [key: string]: number[] },
+  attributes?: { [key: string]: AttributeValue },
   uniforms?: { [key: string]: UniformValue },
   children: List<Node>;
 }
@@ -27,15 +31,24 @@ interface Node {
   props: NodeProps
 };
 
+export const getWebGLContext: GetWebGLContext = (canvas: Option<HTMLCanvasElement>) =>
+  flatMap(canvas, el => {
+    const ctx = el.getContext('webgl2');
+    return ctx ? some(ctx) : (console.error('unable to get webgl2 context'), none);
+  });
+
 const compileShader = (gl: WebGL2RenderingContext, type: number, source: string): Option<WebGLShader> => {
   const shader = gl.createShader(type);
-  if (!shader) return none;
+  if (!shader) {
+    console.error('Invalid shader type:', type);
+    return none;
+  }
 
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
 
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    console.error('Error compiling shader:', gl.getShaderInfoLog(shader));
+    console.error('Error compiling shader:', gl.getShaderInfoLog(shader), source);
     gl.deleteShader(shader);
     return none;
   }
@@ -63,25 +76,26 @@ const createShaderProgram = (gl: WebGL2RenderingContext, vertexSource: string, f
   );
 };
 
-const setupAttribute = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, name: string, values: number[]): Option<WebGL2RenderingContext> => {
+const setupAttribute = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, name: string, values: AttributeValue): Option<WebGL2RenderingContext> => {
   const location = gl.getAttribLocation(shaderProgram, name);
+  const length = Array.isArray(values[0]) ? values[0].length : 1;
   const buffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
-  gl.vertexAttribPointer(location, values.length, gl.FLOAT, false, 0, 0);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values.flat()), gl.STATIC_DRAW);
+  gl.vertexAttribPointer(location, length, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(location);
   return some(gl);
 };
 
-const setupAttributes = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, attributes: { [key: string]: number[] }): Option<WebGL2RenderingContext> => {
-  let result = some(gl);
-  for (const [name, value] of Object.entries(attributes)) {
-    result = flatMap(result, gl => setupAttribute(gl, shaderProgram, name, value));
-  }
-  return result;
+const setupAttributes = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, attributes: { [key: string]: AttributeValue }): Option<WebGLProgram> => {
+  forEach<[string, AttributeValue]>(
+    arrayToList(Object.entries(attributes)),
+    ([name, values]) => setupAttribute(gl, shaderProgram, name, values)
+  );
+  return some(shaderProgram);
 };
 
-const setupUniform = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, name: string, value: UniformValue): Option<WebGL2RenderingContext> => {
+const setupUniform = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, name: string, value: UniformValue): Option<WebGLProgram> => {
   const location = gl.getUniformLocation(shaderProgram, name);
   if (location === null) return none;
   if (typeof value === 'number') {
@@ -116,21 +130,21 @@ const setupUniform = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, n
     return none;
   }
 
-  return some(gl);
+  return some(shaderProgram);
 };
 
-const setupUniforms = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, uniforms: { [key: string]: UniformValue }): Option<WebGL2RenderingContext> => {
-  let result = some(gl);
-  for (const [name, value] of Object.entries(uniforms)) {
-    result = flatMap(result, gl => setupUniform(gl, shaderProgram, name, value));
-  }
-  return result;
+const setupUniforms = (gl: WebGL2RenderingContext, shaderProgram: WebGLProgram, uniforms: { [key: string]: UniformValue }): Option<WebGLProgram> => {
+  forEach<[string, UniformValue]>(
+    arrayToList(Object.entries(uniforms)),
+    ([name, value]) => setupUniform(gl, shaderProgram, name, value)
+  );
+  return some(shaderProgram);
 };
 
 
 export const node = (props: NodeProps): Node => ({ props });
 
-const render = (gl: WebGL2RenderingContext, parentNode?: Node): SideEffect<Node> => {
+export const render = (gl: WebGL2RenderingContext, parentNode?: Node): SideEffect<Node> => {
   const { attributes: parentAttributes, uniforms: parentUniforms } = parentNode?.props ?? {};
   return (node: Node) => {
     const { fragShader, vertShader, attributes, uniforms, children } = node.props;
@@ -149,9 +163,21 @@ const render = (gl: WebGL2RenderingContext, parentNode?: Node): SideEffect<Node>
         return some(shaderProgram);
       }
     );
-    chain(
-      () => renderSequence(gl),
-      () => (forEach(children, render(gl, node)), none),
-    )(none);
+    renderSequence(gl);
+    // Recursively render children merging props down the tree
+    forEach(children, render(gl, {
+      ...node,
+      props: {
+        ...node.props,
+        attributes: {
+          ...attributes,
+          ...parentAttributes
+        },
+        uniforms: {
+          ...uniforms,
+          ...parentUniforms
+        }
+      }
+    }));
   };
 };

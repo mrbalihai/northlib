@@ -8,7 +8,8 @@ export interface Nil {
 export interface Cons<A> {
   readonly _tag: 'Cons';
   readonly head: A;
-  readonly tail: List<A>; }
+  readonly tail: List<A>;
+}
 
 export const nil: List<never> = {
   _tag: 'Nil',
@@ -33,7 +34,7 @@ export const forEach = <A>(list: List<A>, action: SideEffect<A>): void => {
   forEach(list.tail, action);
 }
 
-const arrayToList = <A>(arr: A[], index = 0): List<A> => {
+export const arrayToList = <A>(arr: A[], index = 0): List<A> => {
   if (index >= arr.length) return nil;
   return cons(arr[index], arrayToList(arr, index + 1));
 };
