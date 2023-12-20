@@ -7,6 +7,19 @@ import {
 import { map, some } from './lib/fp/option';
 import { cons, nil } from './lib/fp/list';
 import { glsl, getWebGLContext, node, render, scaleCanvas } from './lib/webgl2';
+import { Mat4, Vec3, Vec4 } from './lib/matrix';
+
+
+interface CameraProps {
+  isOrthographic?: boolean;
+  width?: number;
+  height?: number;
+  depth?: number
+  near?: number,
+  far?: number,
+  aspect?: number,
+  fov?: number, //radians
+}
 
 const main = () => {
   const setFullHeight = style({
@@ -34,11 +47,12 @@ const main = () => {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    const triangle = node({
+    const cube = node({
       vertShader: glsl`
-        in vec2 positions;
+        in vec3 positions;
+        uniform mat4 perspective;
         void main() {
-          gl_Position = vec4(positions, 0, 1);
+          gl_Position = perspective * vec4(positions, 1.0);
         }
       `,
       fragShader: glsl`
@@ -51,21 +65,79 @@ const main = () => {
       `,
       attributes: {
         positions: [
-          [0.0, 1.0, 0],
-          [-1.0, -1.0, 0],
-          [1.0, -1.0, 0],
-        ],
+          [-1.0, -1.0, 1.0],
+          [1.0, -1.0, 1.0],
+          [1.0, 1.0, 1.0],
+          [-1.0, 1.0, 1.0],
+
+          [-1.0, -1.0, -1.0],
+          [-1.0, 1.0, -1.0],
+          [1.0, 1.0, -1.0],
+          [1.0, -1.0, -1.0],
+
+          [-1.0, 1.0, -1.0],
+          [-1.0, 1.0, 1.0],
+          [1.0, 1.0, 1.0],
+          [1.0, 1.0, -1.0],
+
+          [-1.0, -1.0, -1.0],
+          [1.0, -1.0, -1.0],
+          [1.0, -1.0, 1.0],
+          [-1.0, -1.0, 1.0],
+
+          [1.0, -1.0, -1.0],
+          [1.0, 1.0, -1.0],
+          [1.0, 1.0, 1.0],
+          [1.0, -1.0, 1.0],
+
+          [-1.0, -1.0, -1.0],
+          [-1.0, -1.0, 1.0],
+          [-1.0, 1.0, 1.0],
+          [-1.0, 1.0, -1.0],
+        ] as Vec3[],
       },
       uniforms: {
-        color: [0.0, 1.0, 0.0, 1.0],
+        color: [0.0, 1.0, 0.0, 1.0] as Vec4,
       },
+      count: 4 * 6,
       children: nil,
     });
 
-    const camera = node({
-      children: cons(triangle, nil),
-    });
-    const scene = node({ children: cons(camera, nil) });
+    const createCamera = (props: CameraProps) => {
+      const {
+        isOrthographic = false,
+        width: w = 0,
+        height: h = 0,
+        depth: d = 0,
+        near: n = 10,
+        far = 50,
+        aspect: a = 0,
+        fov = 50,
+      } = props;
+      const f = Math.tan(Math.PI * 0.5 - 0.5 * fov);
+      const r = 1.0 / (n - far);
+      const projection: Mat4 = isOrthographic
+        ? [
+           2/w, 0,   0,   0,
+           0,  -2/h, 0,   0,
+           0,   0,   2/d, 0,
+          -1,   1,   0,   1,
+        ]
+        : [
+          f/a, 0, 0,        0,
+          0,   f, 0,        0,
+          0,   0, (n+f)*r, -1,
+          0,   0, n*f*r*2,  0
+        ];
+
+      return node({
+        uniforms: {
+          projection
+        },
+        children: cons(cube, nil),
+      });
+    }
+    const scene = node({ children: cons(createCamera({ aspect: gl.canvas.width / gl.canvas.height }), nil) });
 
     render(gl)(scene);
   });

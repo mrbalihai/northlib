@@ -1,6 +1,7 @@
 import { SideEffect } from '../fp';
 import { List, forEach, arrayToList } from '../fp/list';
 import { Option, none, some, chain, flatMap, map } from '../fp/option';
+import { Mat4, Vec2, Vec3, Vec4 } from '../matrix';
 
 export type GetWebGLContext = (
   canvas: Option<HTMLCanvasElement>,
@@ -10,13 +11,21 @@ export type GetWebGLContext = (
 export const glsl = (shader: TemplateStringsArray) =>
   `#version 300 es\n${shader}`;
 
-type UniformValue = number | boolean | number[] | Float32Array;
+type UniformValue =
+  | number
+  | boolean
+  | number[]
+  | Mat4
+  | Vec2
+  | Vec3
+  | Vec4
+  | Float32Array;
 
 type AttributeValue =
   | number[]
-  | [number, number][]
-  | [number, number, number][]
-  | [number, number, number, number][];
+  | Vec2[]
+  | Vec3[]
+  | Vec4[];
 
 interface NodeProps {
   fragShader?: string;
@@ -24,6 +33,7 @@ interface NodeProps {
   attributes?: { [key: string]: AttributeValue };
   uniforms?: { [key: string]: UniformValue };
   children: List<Node>;
+  count?: number;
 }
 
 interface Node {
@@ -205,7 +215,7 @@ export const node = (props: NodeProps): Node => ({ props });
 export const render =
   (gl: WebGL2RenderingContext, parentNode?: Node): SideEffect<Node> =>
   (node: Node) => {
-    const { fragShader, vertShader, attributes, uniforms, children } =
+    const { fragShader, vertShader, attributes, uniforms, children, count } =
       node.props;
 
     // If shaders are defined, create the program then setup attributes and uniforms
@@ -230,8 +240,12 @@ export const render =
         }),
       (shaderProgram) => {
         //TODO: Simplified draw call, expand for other cases, count etc...
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.useProgram(null);
+        gl.drawArrays(gl.TRIANGLES, 0, count || 0);
+        //console.log(gl.getProgramParameter(shaderProgram, gl.ACTIVE_ATTRIBUTES));
+        //console.log(gl.getProgramParameter(shaderProgram, gl.ACTIVE_UNIFORMS));
+        //gl.validateProgram(shaderProgram);
+        //console.log(gl.getProgramParameter(shaderProgram, gl.VALIDATE_STATUS));
+        // gl.useProgram(null);
         return some(shaderProgram);
       },
     )(gl);

@@ -14,11 +14,72 @@ plugins:
   - '@typescript-eslint'
   - 'prettier'
 rules:
-  prettier/prettier:
+  indent:
     - error
-  no-unused-vars: off
-  '@typescript-eslint/no-unused-vars':
-    - warn
-    - argsIgnorePattern: ^_
-      varsIgnorePattern: ^_
-      caughtErrorsIgnorePattern: ^_
+    - 2
+  linebreak-style:
+    - error
+    - unix
+  max-len:
+    - error
+    - 100
+    - {
+      2,
+      ignoreUrls: true,
+      ignoreComments: false,
+      ignoreRegExpLiterals: true,
+      ignoreStrings: true,
+      ignoreTemplateLiterals: true
+    }
+  quotes:
+    - error
+    - single
+  semi:
+    - error
+    - always
+  comma-dangle:
+    - error
+    - always
+  space-before-function-paren:
+    - error
+    - always
+  keyword-spacing:
+    - error
+    - before: true
+      after: true
+  space-infix-ops:
+    - error
+  eol-last:
+    - error
+    - always
+  no-multiple-empty-lines:
+    - error
+    - max: 1
+      maxEOF: 0
+  object-curly-spacing:
+    - error
+    - always
+  array-bracket-spacing:
+    - error
+    - never
+  brace-style:
+    - error
+    - 1tbs
+  arrow-parens:
+    - error
+    - always
+  object-property-newline:
+    - error
+    - allowAllPropertiesOnSameLine: false
+  array-element-newline:
+    - error
+    - consistent
+  comma-style:
+    - error
+    - last
+  block-spacing:
+    - error
+    - always
+  func-call-spacing:
+    - error
+    - never
