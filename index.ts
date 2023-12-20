@@ -1,23 +1,24 @@
-import { style, getFirstElementByTagName, getElementById, addEventListener } from './lib/dom';
+import {
+  style,
+  getFirstElementByTagName,
+  getElementById,
+  addEventListener,
+} from './lib/dom';
 import { map } from './lib/fp/option';
 import { cons, nil } from './lib/fp/list';
 import { glsl, getWebGLContext, node, render } from './lib/webgl2';
 
-function scaleCanvasResolution(canvas: HTMLCanvasElement, devicePixelRatio: number = window.devicePixelRatio) {
+function scaleCanvasResolution(
+  canvas: HTMLCanvasElement,
+  devicePixelRatio: number = window.devicePixelRatio,
+) {
   const displayWidth = Math.floor(canvas.clientWidth * devicePixelRatio);
-
   const displayHeight = Math.floor(canvas.clientHeight * devicePixelRatio);
-
-  // Check if the canvas is not the same size.
   if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-
-    // Make the canvas the same size
-
     canvas.width = displayWidth;
     canvas.height = displayHeight;
   }
 }
-
 
 const main = () => {
   const setFullHeight = style({
@@ -29,7 +30,7 @@ const main = () => {
   const canvas = getElementById<HTMLCanvasElement>('webglCanvas');
   const html = getFirstElementByTagName('html');
   const body = getFirstElementByTagName('body');
-  addEventListener('resize', map(canvas, scaleCanvasResolution))
+  addEventListener('resize', map(canvas, scaleCanvasResolution));
   setFullHeight(canvas);
   setFullHeight(html);
   setFullHeight(body);
@@ -55,7 +56,7 @@ const main = () => {
       `,
       attributes: {
         positions: [
-          [0.0,  1.0],
+          [0.0, 1.0],
           [-1.0, -1.0],
           [1.0, -1.0],
         ],
@@ -64,10 +65,10 @@ const main = () => {
     });
 
     const camera = node({ children: cons(triangle, nil) });
-    const scene = node({ children: cons(camera, nil) })
+    const scene = node({ children: cons(camera, nil) });
 
     render(gl)(scene);
   });
-}
+};
 
 main();
