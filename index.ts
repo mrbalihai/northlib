@@ -44,21 +44,27 @@ const main = () => {
       fragShader: glsl`
         precision highp float;
         out vec4 fragColor;
+        uniform vec4 color;
         void main() {
-          fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+          fragColor = color;
         }
       `,
       attributes: {
         positions: [
-          [0.0, 1.0],
-          [-1.0, -1.0],
-          [1.0, -1.0],
+          [0.0, 1.0, 0],
+          [-1.0, -1.0, 0],
+          [1.0, -1.0, 0],
         ],
+      },
+      uniforms: {
+        color: [0.0, 1.0, 0.0, 1.0],
       },
       children: nil,
     });
 
-    const camera = node({ children: cons(triangle, nil) });
+    const camera = node({
+      children: cons(triangle, nil),
+    });
     const scene = node({ children: cons(camera, nil) });
 
     render(gl)(scene);
