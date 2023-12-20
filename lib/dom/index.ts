@@ -6,7 +6,7 @@ export type Style = (styles: StyleObject) => SideEffect<Option<HTMLElement>>;
 export type AddEventListener = (
   eventType: string,
   handler: SideEffect<Event>,
-) => SideEffect<Option<HTMLElement>>;
+) => SideEffect<Option<HTMLElement | (Window & typeof globalThis)>>;
 export type GetElementsByTagName = <T extends HTMLElement>(
   tagName: string,
 ) => Option<T[]>;
@@ -25,7 +25,10 @@ export const style: Style = (styles) => (element) => {
 };
 
 export const addEventListener: AddEventListener =
-  <T extends HTMLElement>(eventType: string, handler: SideEffect<Event>) =>
+  <T extends HTMLElement | (Window & typeof globalThis)>(
+    eventType: string,
+    handler: SideEffect<Event>,
+  ) =>
   (element: Option<T>) =>
     map(element, (el) => el.addEventListener(eventType, handler));
 

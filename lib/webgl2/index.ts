@@ -1,6 +1,6 @@
 import { SideEffect } from '../fp';
 import { List, forEach, arrayToList } from '../fp/list';
-import { Option, none, some, chain, flatMap } from '../fp/option';
+import { Option, none, some, chain, flatMap, map } from '../fp/option';
 
 export type GetWebGLContext = (
   canvas: Option<HTMLCanvasElement>,
@@ -38,6 +38,20 @@ export const getWebGLContext: GetWebGLContext = (
     return ctx
       ? some(ctx)
       : (console.error('unable to get webgl2 context'), none);
+  });
+
+export const scaleCanvas = (
+  canvasOption: Option<HTMLCanvasElement>,
+  devicePixelRatio: number = window.devicePixelRatio,
+) =>
+  map(canvasOption, (canvas) => {
+    const displayWidth = Math.floor(canvas.clientWidth * devicePixelRatio);
+    const displayHeight = Math.floor(canvas.clientHeight * devicePixelRatio);
+    if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+      canvas.width = displayWidth;
+      canvas.height = displayHeight;
+    }
+    return canvas;
   });
 
 const compileShader = (
@@ -188,16 +202,14 @@ const setupUniforms = (
 
 export const node = (props: NodeProps): Node => ({ props });
 
-export const render = (
-  gl: WebGL2RenderingContext,
-  parentNode?: Node,
-): SideEffect<Node> => {
-  const { attributes: parentAttributes, uniforms: parentUniforms } =
-    parentNode?.props ?? {};
-  return (node: Node) => {
+export const render =
+  (gl: WebGL2RenderingContext, parentNode?: Node): SideEffect<Node> =>
+  (node: Node) => {
     const { fragShader, vertShader, attributes, uniforms, children } =
       node.props;
-    const renderSequence = chain(
+
+    // If shaders are defined, create the program then setup attributes and uniforms
+    chain(
       () =>
         vertShader && fragShader
           ? createShaderProgram(gl, vertShader, fragShader)
@@ -208,19 +220,22 @@ export const render = (
       },
       (shaderProgram) =>
         setupAttributes(gl, shaderProgram, {
-          ...parentAttributes,
+          ...parentNode?.props.attributes,
           ...attributes,
         }),
       (shaderProgram) =>
-        setupUniforms(gl, shaderProgram, { ...parentUniforms, ...uniforms }),
+        setupUniforms(gl, shaderProgram, {
+          ...parentNode?.props.uniforms,
+          ...uniforms,
+        }),
       (shaderProgram) => {
         //TODO: Simplified draw call, expand for other cases, count etc...
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.useProgram(null);
         return some(shaderProgram);
       },
-    );
-    renderSequence(gl);
+    )(gl);
+
     // Recursively render children merging props down the tree
     forEach(
       children,
@@ -230,14 +245,13 @@ export const render = (
           ...node.props,
           attributes: {
             ...attributes,
-            ...parentAttributes,
+            ...parentNode?.props.attributes,
           },
           uniforms: {
             ...uniforms,
-            ...parentUniforms,
+            ...parentNode?.props.uniforms,
           },
         },
       }),
     );
   };
-};

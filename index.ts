@@ -4,25 +4,14 @@ import {
   getElementById,
   addEventListener,
 } from './lib/dom';
-import { map } from './lib/fp/option';
+import { map, some } from './lib/fp/option';
 import { cons, nil } from './lib/fp/list';
-import { glsl, getWebGLContext, node, render } from './lib/webgl2';
-
-function scaleCanvasResolution(
-  canvas: HTMLCanvasElement,
-  devicePixelRatio: number = window.devicePixelRatio,
-) {
-  const displayWidth = Math.floor(canvas.clientWidth * devicePixelRatio);
-  const displayHeight = Math.floor(canvas.clientHeight * devicePixelRatio);
-  if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-    canvas.width = displayWidth;
-    canvas.height = displayHeight;
-  }
-}
+import { glsl, getWebGLContext, node, render, scaleCanvas } from './lib/webgl2';
 
 const main = () => {
   const setFullHeight = style({
     margin: '0',
+    overflow: 'hidden',
     width: '100%',
     height: '100%',
   });
@@ -30,10 +19,15 @@ const main = () => {
   const canvas = getElementById<HTMLCanvasElement>('webglCanvas');
   const html = getFirstElementByTagName('html');
   const body = getFirstElementByTagName('body');
-  addEventListener('resize', map(canvas, scaleCanvasResolution));
   setFullHeight(canvas);
   setFullHeight(html);
   setFullHeight(body);
+
+  scaleCanvas(canvas, window.devicePixelRatio);
+  const scaleCanvasListener = addEventListener('resize', () =>
+    scaleCanvas(canvas, window.devicePixelRatio),
+  );
+  scaleCanvasListener(some(window));
 
   map(getWebGLContext(canvas), (gl) => {
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
