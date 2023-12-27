@@ -6,9 +6,8 @@ import {
 } from './lib/dom';
 import { map, some } from './lib/fp/option';
 import { cons, nil } from './lib/fp/list';
-import { glsl, getWebGLContext, node, render, scaleCanvas } from './lib/webgl2';
+import { glsl, getWebGLContext, node, createRenderer, scaleCanvas, createShaderProgram } from './lib/webgl2';
 import { Mat4, Vec3, Vec4 } from './lib/matrix';
-
 
 interface CameraProps {
   isOrthographic?: boolean;
@@ -18,7 +17,7 @@ interface CameraProps {
   near?: number,
   far?: number,
   aspect?: number,
-  fov?: number, //radians
+  fov?: number,
 }
 
 const main = () => {
@@ -47,22 +46,26 @@ const main = () => {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    const cube = node({
-      vertShader: glsl`
+    const shader = createShaderProgram(
+      glsl`
         in vec3 positions;
         uniform mat4 perspective;
         void main() {
-          gl_Position = perspective * vec4(positions, 1.0);
+          float zToDivideBy = 1.0 + positions.z * 1.0;
+          gl_Position = vec4(positions.xyz, zToDivideBy);
         }
       `,
-      fragShader: glsl`
+      glsl`
         precision highp float;
         out vec4 fragColor;
         uniform vec4 color;
         void main() {
           fragColor = color;
         }
-      `,
+    `);
+
+    const cube = node({
+      shader,
       attributes: {
         positions: [
           [-1.0, -1.0, 1.0],
@@ -71,35 +74,35 @@ const main = () => {
           [-1.0, 1.0, 1.0],
 
           [-1.0, -1.0, -1.0],
-          [-1.0, 1.0, -1.0],
-          [1.0, 1.0, -1.0],
           [1.0, -1.0, -1.0],
-
+          [1.0, 1.0, -1.0],
           [-1.0, 1.0, -1.0],
+
           [-1.0, 1.0, 1.0],
           [1.0, 1.0, 1.0],
           [1.0, 1.0, -1.0],
+          [-1.0, 1.0, -1.0],
 
-          [-1.0, -1.0, -1.0],
-          [1.0, -1.0, -1.0],
-          [1.0, -1.0, 1.0],
           [-1.0, -1.0, 1.0],
-
-          [1.0, -1.0, -1.0],
-          [1.0, 1.0, -1.0],
-          [1.0, 1.0, 1.0],
           [1.0, -1.0, 1.0],
-
+          [1.0, -1.0, -1.0],
           [-1.0, -1.0, -1.0],
+
           [-1.0, -1.0, 1.0],
           [-1.0, 1.0, 1.0],
           [-1.0, 1.0, -1.0],
+          [-1.0, -1.0, -1.0],
+
+          [1.0, -1.0, 1.0],
+          [1.0, 1.0, 1.0],
+          [1.0, 1.0, -1.0],
+          [1.0, -1.0, -1.0],
         ] as Vec3[],
       },
       uniforms: {
         color: [0.0, 1.0, 0.0, 1.0] as Vec4,
       },
-      count: 4 * 6,
+      count: 36,
       children: nil,
     });
 
@@ -118,28 +121,31 @@ const main = () => {
       const r = 1.0 / (n - far);
       const projection: Mat4 = isOrthographic
         ? [
-           2/w, 0,   0,   0,
-           0,  -2/h, 0,   0,
-           0,   0,   2/d, 0,
+          2 / w, 0,   0,   0,
+          0,  -2 / h, 0,   0,
+          0,   0,   2 / d, 0,
           -1,   1,   0,   1,
         ]
         : [
-          f/a, 0, 0,        0,
+          f / a, 0, 0,        0,
           0,   f, 0,        0,
-          0,   0, (n+f)*r, -1,
-          0,   0, n*f*r*2,  0
+          0,   0, (n + f) * r, -1,
+          0,   0, n * f * r * 2,  0,
         ];
 
       return node({
         uniforms: {
-          projection
+          projection,
         },
         children: cons(cube, nil),
       });
-    }
-    const scene = node({ children: cons(createCamera({ aspect: gl.canvas.width / gl.canvas.height }), nil) });
+    };
+    const scene = node({
+      children: cons(createCamera({ aspect: gl.canvas.width / gl.canvas.height }), nil),
+    });
 
-    render(gl)(scene);
+    const render = createRenderer(gl, scene);
+    render({});
   });
 };
 

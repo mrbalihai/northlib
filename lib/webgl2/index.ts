@@ -1,11 +1,15 @@
 import { SideEffect } from '../fp';
-import { List, forEach, arrayToList } from '../fp/list';
+import { List, forEach, arrayToList, nil } from '../fp/list';
 import { Option, none, some, chain, flatMap, map } from '../fp/option';
 import { Mat4, Vec2, Vec3, Vec4 } from '../matrix';
 
 export type GetWebGLContext = (
   canvas: Option<HTMLCanvasElement>,
 ) => Option<WebGL2RenderingContext>;
+
+export type CreateShaderProgram = (vertexSource: string, fragmentSource: string)
+  => (gl: WebGL2RenderingContext)
+  => Option<WebGLProgram>;
 
 // To facilitate syntax highlighting
 export const glsl = (shader: TemplateStringsArray) =>
@@ -28,8 +32,7 @@ type AttributeValue =
   | Vec4[];
 
 interface NodeProps {
-  fragShader?: string;
-  vertShader?: string;
+  shader?: Option<WebGLShader>
   attributes?: { [key: string]: AttributeValue };
   uniforms?: { [key: string]: UniformValue };
   children: List<Node>;
@@ -64,7 +67,7 @@ export const scaleCanvas = (
     return canvas;
   });
 
-const compileShader = (
+export const compileShader = (
   gl: WebGL2RenderingContext,
   type: number,
   source: string,
@@ -91,37 +94,34 @@ const compileShader = (
   return some(shader);
 };
 
-const createShaderProgram = (
-  gl: WebGL2RenderingContext,
-  vertexSource: string,
-  fragmentSource: string,
-): Option<WebGLProgram> => {
-  return flatMap(
-    compileShader(gl, gl.VERTEX_SHADER, vertexSource),
-    (vertexShader) =>
+export const createShaderProgram: CreateShaderProgram =
+  (vertexSource: string, fragmentSource: string) =>
+    (gl: WebGL2RenderingContext) =>
       flatMap(
-        compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource),
-        (fragmentShader) => {
-          const program = gl.createProgram();
-          if (!program) return none;
+        compileShader(gl, gl.VERTEX_SHADER, vertexSource),
+        (vertexShader) =>
+          flatMap(
+            compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource),
+            (fragmentShader) => {
+              const program = gl.createProgram();
+              if (!program) return none;
 
-          gl.attachShader(program, vertexShader);
-          gl.attachShader(program, fragmentShader);
-          gl.linkProgram(program);
+              gl.attachShader(program, vertexShader);
+              gl.attachShader(program, fragmentShader);
+              gl.linkProgram(program);
 
-          if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-            console.error(
-              'Error initializing shader program:',
-              gl.getProgramInfoLog(program),
-            );
-            return none;
-          }
+              if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error(
+                  'Error initializing shader program:',
+                  gl.getProgramInfoLog(program),
+                );
+                return none;
+              }
 
-          return some(program);
-        },
-      ),
-  );
-};
+              return some(program);
+            },
+          ),
+      );
 
 const setupAttribute = (
   gl: WebGL2RenderingContext,
@@ -171,24 +171,24 @@ const setupUniform = (
     gl.uniform1i(location, value ? 1 : 0); // Boolean (booleans are treated as integers in GLSL)
   } else if (Array.isArray(value)) {
     switch (value.length) {
-      case 2:
-        gl.uniform2fv(location, value); // Vector of 2 floats
-        break;
-      case 3:
-        gl.uniform3fv(location, value); // Vector of 3 floats
-        break;
-      case 4:
-        gl.uniform4fv(location, value); // Vector of 4 floats
-        break;
-      case 9:
-        gl.uniformMatrix3fv(location, false, value); // 3x3 matrix
-        break;
-      case 16:
-        gl.uniformMatrix4fv(location, false, value); // 4x4 matrix
-        break;
-      default:
-        console.warn(`Unhandled uniform array length: ${value.length}`);
-        return none;
+    case 2:
+      gl.uniform2fv(location, value); // Vector of 2 floats
+      break;
+    case 3:
+      gl.uniform3fv(location, value); // Vector of 3 floats
+      break;
+    case 4:
+      gl.uniform4fv(location, value); // Vector of 4 floats
+      break;
+    case 9:
+      gl.uniformMatrix3fv(location, false, value); // 3x3 matrix
+      break;
+    case 16:
+      gl.uniformMatrix4fv(location, false, value); // 4x4 matrix
+      break;
+    default:
+      console.warn(`Unhandled uniform array length: ${value.length}`);
+      return none;
     }
   } else {
     console.warn(`Unhandled uniform type: ${typeof value}`);
@@ -212,48 +212,23 @@ const setupUniforms = (
 
 export const node = (props: NodeProps): Node => ({ props });
 
-export const render =
-  (gl: WebGL2RenderingContext, parentNode?: Node): SideEffect<Node> =>
-  (node: Node) => {
-    const { fragShader, vertShader, attributes, uniforms, children, count } =
-      node.props;
+export const createRenderer = <TState>(
+  gl: WebGL2RenderingContext,
+  node: Node,
+  parentNode?: Node,
+): SideEffect<TState> => {
+  const { shader, attributes, uniforms, children, count } = node.props;
 
-    // If shaders are defined, create the program then setup attributes and uniforms
-    chain(
-      () =>
-        vertShader && fragShader
-          ? createShaderProgram(gl, vertShader, fragShader)
-          : none,
-      (shaderProgram) => {
-        gl.useProgram(shaderProgram);
-        return some(shaderProgram);
-      },
-      (shaderProgram) =>
-        setupAttributes(gl, shaderProgram, {
-          ...parentNode?.props.attributes,
-          ...attributes,
-        }),
-      (shaderProgram) =>
-        setupUniforms(gl, shaderProgram, {
-          ...parentNode?.props.uniforms,
-          ...uniforms,
-        }),
-      (shaderProgram) => {
-        //TODO: Simplified draw call, expand for other cases, count etc...
-        gl.drawArrays(gl.TRIANGLES, 0, count || 0);
-        //console.log(gl.getProgramParameter(shaderProgram, gl.ACTIVE_ATTRIBUTES));
-        //console.log(gl.getProgramParameter(shaderProgram, gl.ACTIVE_UNIFORMS));
-        //gl.validateProgram(shaderProgram);
-        //console.log(gl.getProgramParameter(shaderProgram, gl.VALIDATE_STATUS));
-        // gl.useProgram(null);
-        return some(shaderProgram);
-      },
-    )(gl);
+  if (shader) {
+    map(shader, (a) => gl.useProgram(a));
+    if (attributes) setupAttributes(gl, some(shader), attributes);
+    if (uniforms) setupUniforms(gl, some(shader), uniforms);
+  }
 
-    // Recursively render children merging props down the tree
+  if (children)
     forEach(
       children,
-      render(gl, {
+      createRenderer(gl, {
         ...node,
         props: {
           ...node.props,
@@ -268,4 +243,8 @@ export const render =
         },
       }),
     );
+
+  return () => {
+    gl.drawArrays(gl.TRIANGLES, 0, count || 0);
   };
+};
