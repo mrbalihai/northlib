@@ -6,17 +6,13 @@ import {
 } from './lib/dom';
 import { map, some } from './lib/fp/option';
 import { cons, nil } from './lib/fp/list';
-import { glsl, getWebGLContext, node, createRenderer, scaleCanvas, createShaderProgram } from './lib/webgl2';
-import { Mat4, Vec3, Vec4 } from './lib/matrix';
+import { glsl, getWebGLContext, node, createRenderer, scaleCanvas, UNIFORM_TYPE, ATTRIBUTE_TYPE, createProgram } from './lib/webgl2';
+import { Mat4, Vec3, Vec4, mat4 } from './lib/matrix';
 
 interface CameraProps {
-  isOrthographic?: boolean;
-  width?: number;
-  height?: number;
-  depth?: number
   near?: number,
   far?: number,
-  aspect?: number,
+  aspect: number,
   fov?: number,
 }
 
@@ -42,27 +38,53 @@ const main = () => {
   scaleCanvasListener(some(window));
 
   map(getWebGLContext(canvas), (gl) => {
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-
-    const shader = createShaderProgram(
-      glsl`
+    const shader = createProgram({
+      vert: glsl`
         in vec3 positions;
-        uniform mat4 perspective;
+        in float faceIds;
+        uniform mat4 projection;
+        uniform mat4 transform;
+        uniform mat4 view;
+        out float vFaceId;
         void main() {
-          float zToDivideBy = 1.0 + positions.z * 1.0;
-          gl_Position = vec4(positions.xyz, zToDivideBy);
+          gl_Position = projection * view * transform * vec4(positions, 1.0);
+          vFaceId = faceIds;
         }
       `,
-      glsl`
+      frag: glsl`
         precision highp float;
+        in float vFaceId;
         out vec4 fragColor;
         uniform vec4 color;
         void main() {
-          fragColor = color;
+          if (vFaceId == 0.0) {
+            fragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red
+          } else if (vFaceId == 1.0) {
+            fragColor = vec4(0.0, 1.0, 0.0, 1.0); // Green
+          } else if (vFaceId == 2.0) {
+            fragColor = vec4(0.0, 0.0, 1.0, 1.0); // Blue
+          } else if (vFaceId == 3.0) {
+            fragColor = vec4(1.0, 1.0, 0.0, 1.0); // Yellow
+          } else if (vFaceId == 4.0) {
+            fragColor = vec4(0.0, 1.0, 1.0, 1.0); // Cyan
+          } else if (vFaceId == 5.0) {
+            fragColor = vec4(1.0, 0.0, 1.0, 1.0); // Magenta
+          } else {
+            fragColor = vec4(1.0, 1.0, 1.0, 1.0); // White for any other case
+          }
         }
-    `);
+      `,
+      uniforms: {
+        projection: UNIFORM_TYPE.Mat4,
+        transform: UNIFORM_TYPE.Mat4,
+        view: UNIFORM_TYPE.Mat4,
+        color: UNIFORM_TYPE.Vec4,
+      },
+      attributes: {
+        positions: ATTRIBUTE_TYPE.Vec3,
+        faceIds: ATTRIBUTE_TYPE.Float,
+      },
+    })(gl);
 
     const cube = node({
       shader,
@@ -98,54 +120,73 @@ const main = () => {
           [1.0, 1.0, -1.0],
           [1.0, -1.0, -1.0],
         ] as Vec3[],
+        faceIds: [
+          0, 0, 0, 0,
+          1, 1, 1, 1,
+          2, 2, 2, 2,
+          3, 3, 3, 3,
+          4, 4, 4, 4,
+          5, 5, 5, 5,
+        ],
       },
       uniforms: {
         color: [0.0, 1.0, 0.0, 1.0] as Vec4,
+        transform: mat4.translate(mat4.scale(mat4.identity(), -0.5, -0.5, -0.5), -0.5, -0.5, -0.5),
       },
-      count: 36,
+      count: 24,
+      children: nil,
+    });
+
+    const pyramid = node({
+      shader,
+      attributes: {
+        positions: [
+          [-1, 0, -1],
+          [1, 0, -1],
+          [1, 0, 1],
+          [-1, 0, 1],
+          [0, 1, 0],
+        ] as Vec3[],
+      },
+      uniforms: {
+        color: [1.0, 0.0, 0.0, 1.0] as Vec4,
+        transform: mat4.translate(mat4.scale(mat4.identity(), -0.5, -0.5, -0.5), 0.5, 0.5, 0.5),
+      },
+      count: 5,
       children: nil,
     });
 
     const createCamera = (props: CameraProps) => {
       const {
-        isOrthographic = false,
-        width: w = 0,
-        height: h = 0,
-        depth: d = 0,
-        near: n = 10,
-        far = 50,
-        aspect: a = 0,
-        fov = 50,
+        near = 0.1,
+        far = 10.0,
+        aspect,
+        fov =  45 * Math.PI / 180,
       } = props;
-      const f = Math.tan(Math.PI * 0.5 - 0.5 * fov);
-      const r = 1.0 / (n - far);
-      const projection: Mat4 = isOrthographic
-        ? [
-          2 / w, 0,   0,   0,
-          0,  -2 / h, 0,   0,
-          0,   0,   2 / d, 0,
-          -1,   1,   0,   1,
-        ]
-        : [
-          f / a, 0, 0,        0,
-          0,   f, 0,        0,
-          0,   0, (n + f) * r, -1,
-          0,   0, n * f * r * 2,  0,
-        ];
-
+      const projection: Mat4 = mat4.perspectiveProjection(aspect, fov, near, far);
+      const view: Mat4 = mat4.lookAt([0, 0, 5], [0, 0, 0], [0, 1, 0]);
       return node({
+        shader,
         uniforms: {
           projection,
+          view,
         },
         children: cons(cube, nil),
       });
     };
-    const scene = node({
-      children: cons(createCamera({ aspect: gl.canvas.width / gl.canvas.height }), nil),
-    });
 
-    const render = createRenderer(gl, scene);
-    render({});
+    const camera = createCamera({ aspect: gl.canvas.width / gl.canvas.height });
+    const scene = node({
+      shader,
+      children: cons(camera, nil),
+    });
+    const render = createRenderer(gl);
+
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    render(scene);
+
   });
 };
 
