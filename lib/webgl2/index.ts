@@ -12,30 +12,31 @@ export const UNIFORM_TYPE = {
   Int: 'Int',
   Float: 'Float',
   Boolean: 'Boolean',
-};
+} as const;
 
-export const ATTRIBUTE_TYPE = {
+export const BUFFER_TYPE = {
   Vec3: 'Vec3',
   Vec2: 'Vec2',
   Float: 'Float',
-};
+} as const;
 
-type UniformType = typeof UNIFORM_TYPE[keyof typeof UNIFORM_TYPE];
-type AttributeType = typeof UNIFORM_TYPE[keyof typeof UNIFORM_TYPE];
+export type BufferType = typeof BUFFER_TYPE[keyof typeof BUFFER_TYPE];
+export type UniformType = typeof UNIFORM_TYPE[keyof typeof UNIFORM_TYPE];
+
+type AttributeDefinition = [string, BufferType] | [string, BufferType][];
+
+export const isInterleavedAttribute = (a: AttributeDefinition): a is [string, BufferType][] =>
+  Array.isArray(a[0]);
+
+export const isNonInterleavedAttribute = (a: AttributeDefinition): a is [string, BufferType] =>
+  !Array.isArray(a[0]);
+
 interface ShaderProgram {
   program: WebGLProgram,
-  attributeLocations: {
-    [key: string]: number;
-  },
-  uniformLocations: {
-    [key: string]: number;
-  },
-  uniformTypes: {
-    [key: string]: UniformType;
-  },
-  attributeTypes: {
-    [key: string]: AttributeType;
-  },
+  attributeLocations: Record<string, number>;
+  uniformLocations: Record<string, number>;
+  uniformTypes: Record<string, UniformType>;
+  attributeTypes: Record<string, AttributeDefinition>;
 }
 
 export type GetWebGLContext = (
@@ -45,8 +46,8 @@ export type GetWebGLContext = (
 export type CreateProgram = (props: {
   vert: string,
   frag: string,
-  uniforms: { [key: string]: UniformType },
-  attributes: { [key: string]: AttributeType },
+  uniforms: Record<string, UniformType>,
+  attributes: Record<string, AttributeDefinition>,
 }) => (gl: WebGL2RenderingContext) => Option<ShaderProgram>;
 
 // To facilitate syntax highlighting
@@ -63,11 +64,7 @@ type UniformValue =
   | Vec4
   | Float32Array;
 
-type AttributeValue =
-  | number[]
-  | Vec2[]
-  | Vec3[]
-  | Vec4[];
+type AttributeValue = number[];
 
 interface NodeProps {
   shader: Option<ShaderProgram>;
@@ -161,10 +158,23 @@ export const createProgram: CreateProgram =
             }
 
             const attributeLocations = Object.keys(attributes)
-              .reduce((a, b) => ({
-                ...a,
-                [b]: gl.getAttribLocation(program, b),
-              }), {});
+              .reduce((a, b) => {
+                const attr = attributes[b];
+                if (isInterleavedAttribute(attr)) {
+                  return {
+                    ...a,
+                    ...attr.reduce((c, d) => ({
+                      ...c,
+                      [d[0]]: gl.getAttribLocation(d[0], b),
+                    }), {}),
+                  };
+                } else {
+                  return {
+                    ...a,
+                    [b]: gl.getAttribLocation(program, attributes[b][0] as string),
+                  };
+                }
+              }, {});
 
             const uniformLocations = Object.keys(uniforms)
               .reduce((a, b) => ({
@@ -190,15 +200,17 @@ const setupAttribute = (
   values: AttributeValue,
 ): Option<WebGLProgram> => {
   map(shaderProgram, (program) => {
-    const location = program.uniformLocations[name];
-    const length = Array.isArray(values[0]) ? values[0].length : 1;
+    const location = program.attributeLocations[name];
+    const definition = program.attributeTypes[name];
+
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(values.flat()),
-      gl.STATIC_DRAW,
-    );
+    gl.bufferData( gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
+
+    // TODO: enumerate interleaved attributes
+    // TODO: get length from the attribute type
+
+    const length = Array.isArray(values[0]) ? values[0].length : 1;
     gl.vertexAttribPointer(location, length, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(location);
   });
@@ -232,25 +244,25 @@ const setupUniform = (
       gl.uniform1i(location, value as number);
       break;
     case 'Float':
-      gl.uniform1f(location, value as number); // Single float
+      gl.uniform1f(location, value as number);
       break;
     case 'Boolean':
-      gl.uniform1i(location, value ? 1 : 0); // Boolean (booleans are treated as integers in GLSL)
+      gl.uniform1i(location, value ? 1 : 0);
       break;
     case 'Vec2':
-      gl.uniform2fv(location, value as number[]); // Vector of 2 floats
+      gl.uniform2fv(location, value as number[]);
       break;
     case 'Vec3':
-      gl.uniform3fv(location, value as number[]); // Vector of 3 floats
+      gl.uniform3fv(location, value as number[]);
       break;
     case 'Vec4':
-      gl.uniform4fv(location, value as number[]); // Vector of 4 floats
+      gl.uniform4fv(location, value as number[]);
       break;
     case 'Mat3':
-      gl.uniformMatrix3fv(location, false, value as number[]); // 3x3 matrix
+      gl.uniformMatrix3fv(location, false, value as number[]);
       break;
     case 'Mat4':
-      gl.uniformMatrix4fv(location, false, value as number[]); // 4x4 matrix
+      gl.uniformMatrix4fv(location, false, value as number[]);
       break;
     default:
       console.warn(`Unhandled uniform '${name}' of type '${type}' and value: '${value}'`);

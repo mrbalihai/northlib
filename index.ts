@@ -6,7 +6,7 @@ import {
 } from './lib/dom';
 import { map, some } from './lib/fp/option';
 import { cons, nil } from './lib/fp/list';
-import { glsl, getWebGLContext, node, createRenderer, scaleCanvas, UNIFORM_TYPE, ATTRIBUTE_TYPE, createProgram } from './lib/webgl2';
+import { glsl, getWebGLContext, node, createRenderer, scaleCanvas, UNIFORM_TYPE, createProgram, BUFFER_TYPE } from './lib/webgl2';
 import { Mat4, Vec3, Vec4, mat4 } from './lib/matrix';
 
 interface CameraProps {
@@ -40,15 +40,15 @@ const main = () => {
   map(getWebGLContext(canvas), (gl) => {
     const shader = createProgram({
       vert: glsl`
-        in vec3 positions;
-        in float faceIds;
+        in vec3 position;
+        in float faceId;
         uniform mat4 projection;
         uniform mat4 transform;
         uniform mat4 view;
         out float vFaceId;
         void main() {
-          gl_Position = projection * view * transform * vec4(positions, 1.0);
-          vFaceId = faceIds;
+          gl_Position = projection * view * transform * vec4(position, 1.0);
+          vFaceId = faceId;
         }
       `,
       frag: glsl`
@@ -81,8 +81,11 @@ const main = () => {
         color: UNIFORM_TYPE.Vec4,
       },
       attributes: {
-        positions: ATTRIBUTE_TYPE.Vec3,
-        faceIds: ATTRIBUTE_TYPE.Float,
+        positions: [
+          ['position', BUFFER_TYPE.Vec3],
+          ['faceId', BUFFER_TYPE.Float],
+        ],
+        faceIds: ['faceId', BUFFER_TYPE.Float],
       },
     })(gl);
 
@@ -90,43 +93,36 @@ const main = () => {
       shader,
       attributes: {
         positions: [
-          [-1.0, -1.0, 1.0],
-          [1.0, -1.0, 1.0],
-          [1.0, 1.0, 1.0],
-          [-1.0, 1.0, 1.0],
+          // [x, y, z, faceId]
+          -1.0, -1.0, 1.0, 1,
+          1.0, -1.0, 1.0, 1,
+          1.0, 1.0, 1.0, 1,
+          -1.0, 1.0, 1.0, 1,
 
-          [-1.0, -1.0, -1.0],
-          [1.0, -1.0, -1.0],
-          [1.0, 1.0, -1.0],
-          [-1.0, 1.0, -1.0],
+          -1.0, -1.0, -1.0, 2,
+          1.0, -1.0, -1.0, 2,
+          1.0, 1.0, -1.0, 2,
+          -1.0, 1.0, -1.0, 2,
 
-          [-1.0, 1.0, 1.0],
-          [1.0, 1.0, 1.0],
-          [1.0, 1.0, -1.0],
-          [-1.0, 1.0, -1.0],
+          -1.0, 1.0, 1.0, 3,
+          1.0, 1.0, 1.0, 3,
+          1.0, 1.0, -1.0, 3,
+          -1.0, 1.0, -1.0, 3,
 
-          [-1.0, -1.0, 1.0],
-          [1.0, -1.0, 1.0],
-          [1.0, -1.0, -1.0],
-          [-1.0, -1.0, -1.0],
+          -1.0, -1.0, 1.0, 4,
+          1.0, -1.0, 1.0, 4,
+          1.0, -1.0, -1.0, 4,
+          -1.0, -1.0, -1.0, 4,
 
-          [-1.0, -1.0, 1.0],
-          [-1.0, 1.0, 1.0],
-          [-1.0, 1.0, -1.0],
-          [-1.0, -1.0, -1.0],
+          -1.0, -1.0, 1.0, 5,
+          -1.0, 1.0, 1.0, 5,
+          -1.0, 1.0, -1.0, 5,
+          -1.0, -1.0, -1.0, 5,
 
-          [1.0, -1.0, 1.0],
-          [1.0, 1.0, 1.0],
-          [1.0, 1.0, -1.0],
-          [1.0, -1.0, -1.0],
-        ] as Vec3[],
-        faceIds: [
-          0, 0, 0, 0,
-          1, 1, 1, 1,
-          2, 2, 2, 2,
-          3, 3, 3, 3,
-          4, 4, 4, 4,
-          5, 5, 5, 5,
+          1.0, -1.0, 1.0, 6,
+          1.0, 1.0, 1.0, 6,
+          1.0, 1.0, -1.0, 6,
+          1.0, -1.0, -1.0, 6,
         ],
       },
       uniforms: {
@@ -141,12 +137,12 @@ const main = () => {
       shader,
       attributes: {
         positions: [
-          [-1, 0, -1],
-          [1, 0, -1],
-          [1, 0, 1],
-          [-1, 0, 1],
-          [0, 1, 0],
-        ] as Vec3[],
+          -1, 0, -1, 1,
+          1, 0, -1, 2,
+          1, 0, 1, 3,
+          -1, 0, 1, 4,
+          0, 1, 0, 5,
+        ],
       },
       uniforms: {
         color: [1.0, 0.0, 0.0, 1.0] as Vec4,
