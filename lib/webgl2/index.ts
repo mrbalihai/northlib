@@ -200,19 +200,40 @@ const setupAttribute = (
   values: AttributeValue,
 ): Option<WebGLProgram> => {
   map(shaderProgram, (program) => {
-    const location = program.attributeLocations[name];
-    const definition = program.attributeTypes[name];
+    const attribute = program.attributeTypes[name];
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
 
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData( gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
 
-    // TODO: enumerate interleaved attributes
-    // TODO: get length from the attribute type
+    const attrs = isInterleavedAttribute(attribute) ? attribute : [attribute];
+    attrs.forEach((a) => {
+      const type = a[1];
+      const attrName = a[0];
+      const location = program.attributeLocations[attrName];
+      switch (type) {
+      case 'Vec3':
+        gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(location);
+        break;
+      case 'Vec2':
+        gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(location);
+        break;
+      case 'Float':
+        gl.vertexAttribPointer(location, 1, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(location);
+        break;
+      default:
+        console.warn(`Unhandled attribute type '${type}'`);
+        return none;
+      }
+    });
 
-    const length = Array.isArray(values[0]) ? values[0].length : 1;
-    gl.vertexAttribPointer(location, length, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(location);
+    gl.bindVertexArray(null);
   });
   return some(gl);
 };
