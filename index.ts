@@ -6,8 +6,8 @@ import {
 } from './lib/dom';
 import { map, some } from './lib/fp/option';
 import { cons, nil } from './lib/fp/list';
-import { glsl, getWebGLContext, node, createRenderer, scaleCanvas, UNIFORM_TYPE, createProgram, BUFFER_TYPE } from './lib/webgl2';
-import { Mat4, Vec3, Vec4, mat4 } from './lib/matrix';
+import { glsl, getWebGLContext, node, createRenderer, scaleCanvas, UNIFORM_TYPE, createProgram, BUFFER_TYPE, onFrame } from './lib/webgl2';
+import { Mat4, Vec4, mat4 } from './lib/matrix';
 
 interface CameraProps {
   near?: number,
@@ -167,7 +167,7 @@ const main = () => {
           projection,
           view,
         },
-        children: cons(cube, nil),
+        children: cons(cube, cons(pyramid, nil)),
       });
     };
 
@@ -178,10 +178,14 @@ const main = () => {
     });
     const render = createRenderer(gl);
 
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    render(scene);
+    requestAnimationFrame(onFrame(gl, scene, (state, time) => {
+      console.log(time);
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      render(state);
+      return state;
+    }));
 
   });
 };

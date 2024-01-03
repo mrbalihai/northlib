@@ -74,7 +74,7 @@ interface NodeProps {
   count?: number;
 }
 
-interface Node {
+export interface Node {
   props: NodeProps;
 }
 
@@ -87,6 +87,16 @@ export const getWebGLContext: GetWebGLContext = (
       ? some(ctx)
       : (console.error('unable to get webgl2 context'), none);
   });
+
+export type StateFn = (state: Node, time: number) => Node;
+export const onFrame = (
+  gl: WebGL2RenderingContext,
+  state: Node,
+  stateFn: StateFn,
+) => (time: number) => {
+  const newState = stateFn(state, time);
+  requestAnimationFrame(onFrame(gl, newState, stateFn));
+};
 
 export const scaleCanvas = (
   canvasOption: Option<HTMLCanvasElement>,
@@ -193,6 +203,13 @@ export const createProgram: CreateProgram =
         ),
     );
 
+const usingVertexArray = (gl: WebGL2RenderingContext, fn: SideEffect<WebGL2RenderingContext>) => {
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  fn(gl);
+  gl.bindVertexArray(null);
+};
+
 const setupAttribute = (
   gl: WebGL2RenderingContext,
   shaderProgram: Option<ShaderProgram>,
@@ -201,39 +218,36 @@ const setupAttribute = (
 ): Option<WebGLProgram> => {
   map(shaderProgram, (program) => {
     const attribute = program.attributeTypes[name];
+    usingVertexArray(gl, () => {
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData( gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
 
-    const vao = gl.createVertexArray();
-    gl.bindVertexArray(vao);
-
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData( gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
-
-    const attrs = isInterleavedAttribute(attribute) ? attribute : [attribute];
-    attrs.forEach((a) => {
-      const type = a[1];
-      const attrName = a[0];
-      const location = program.attributeLocations[attrName];
-      switch (type) {
-      case 'Vec3':
-        gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(location);
-        break;
-      case 'Vec2':
-        gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(location);
-        break;
-      case 'Float':
-        gl.vertexAttribPointer(location, 1, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(location);
-        break;
-      default:
-        console.warn(`Unhandled attribute type '${type}'`);
-        return none;
-      }
+      const attrs = isInterleavedAttribute(attribute) ? attribute : [attribute];
+      attrs.forEach((a) => {
+        const type = a[1];
+        const attrName = a[0];
+        const location = program.attributeLocations[attrName];
+        switch (type) {
+        case 'Vec3':
+          gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
+          gl.enableVertexAttribArray(location);
+          break;
+        case 'Vec2':
+          gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+          gl.enableVertexAttribArray(location);
+          break;
+        case 'Float':
+          gl.vertexAttribPointer(location, 1, gl.FLOAT, false, 0, 0);
+          gl.enableVertexAttribArray(location);
+          break;
+        default:
+          console.warn(`Unhandled attribute type '${type}'`);
+          return none;
+        }
+      });
     });
 
-    gl.bindVertexArray(null);
   });
   return some(gl);
 };
@@ -320,10 +334,46 @@ export const createRenderer = (
     // This could be implemented by detecting changes in the state tree, i'd
     // need to create a way of mutating data within the state tree that manages
     // this
-    map(shader, (a) => {
-      gl.useProgram(a.program);
-      if (attributes) setupAttributes(gl, shader, attributes);
-      if (uniforms) setupUniforms(gl, shader, uniforms);
+    map(shader, (shaderProgram) => {
+      gl.useProgram(shaderProgram.program);
+      if (attributes) {
+        Object.entries(attributes).forEach(([name, values]) => {
+          setupAttribute(gl, shader, name, values);
+          const attribute = shaderProgram.attributeTypes[name];
+          usingVertexArray(gl, () => {
+            const buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.bufferData( gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
+
+            const attrs = isInterleavedAttribute(attribute) ? attribute : [attribute];
+            attrs.forEach((a) => {
+              const type = a[1];
+              const attrName = a[0];
+              const location = shaderProgram.attributeLocations[attrName];
+              switch (type) {
+              case 'Vec3':
+                gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(location);
+                break;
+              case 'Vec2':
+                gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(location);
+                break;
+              case 'Float':
+                gl.vertexAttribPointer(location, 1, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(location);
+                break;
+              default:
+                console.warn(`Unhandled attribute type '${type}'`);
+                return none;
+              }
+            });
+          });
+        });
+      }
+      if (uniforms) {
+        setupUniforms(gl, shader, uniforms);
+      }
       gl.drawArrays(gl.TRIANGLES, 0, count || 0);
     });
     if (children) forEach(children, render);
